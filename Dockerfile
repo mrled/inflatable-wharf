@@ -12,6 +12,10 @@ ENV ACME_DOMAIN example.com
 # The name of the DNS provider
 ENV ACME_DNS_AUTHENTICATOR manual
 
+# If this is "staging", use the staging server
+# If it's any other value, use the production server
+ENV ACME_SERVER staging
+
 # You also must pass variables for the API key of your DNS provider
 # Run `lego dnshelp` for more information about each specific provider
 # Note that these variables are not prefixed with "ACME_"
@@ -28,6 +32,7 @@ ENV ACME_FREQUENCY devel
 # Not intended to change at runtime
 ENV ACME_USER acme
 ENV ACME_DIR /srv/inflatable-wharf
+ENV ACME_LOGFILE "$ACME_DIR/acme.log"
 
 RUN /bin/true \
 
@@ -40,5 +45,10 @@ RUN /bin/true \
 # NOTE: We do not use a USER statement, because crond (and therefore entrypoint.sh) must be run as root
 
 COPY ["perforated-cardboard.sh", "/usr/local/bin/"]
-ENTRYPOINT ["/bin/sh"]
-CMD ["-c", "/usr/local/bin/perforated-cardboard.sh"]
+RUN chmod 755 /usr/local/bin/perforated-cardboard.sh
+
+# CMD /bin/sh -c
+# ENTRYPOINT /usr/local/bin/perforated-cardboard.sh
+
+ENTRYPOINT ["/usr/local/bin/perforated-cardboard.sh"]
+CMD ["/bin/sh", "-i"]
