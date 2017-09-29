@@ -40,4 +40,5 @@ RUN /bin/true \
 # NOTE: We do not use a USER statement, because crond (and therefore entrypoint.sh) must be run as root
 
 COPY ["perforated-cardboard.sh", "/usr/local/bin/"]
-CMD ["/bin/sh", "-c", "/usr/local/bin/perforated-cardboard.sh"]
+ENTRYPOINT ["/bin/sh"]
+CMD ["-c", "/usr/local/bin/perforated-cardboard.sh"]
