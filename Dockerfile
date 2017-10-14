@@ -16,9 +16,17 @@ ENV ACME_DNS_AUTHENTICATOR manual
 # If it's any other value, use the production server
 ENV ACME_SERVER staging
 
-# You also must pass variables for the API key of your DNS provider
-# Run `lego dnshelp` for more information about each specific provider
+# You also must pass variables for your DNS provider credentials,
+# such as an API access key and/or secret
+# Run this command for more information about each specific provider:
+#   docker run xenolf/lego:latest dnshelp
 # Note that these variables are not prefixed with "ACME_"
+
+# Instead of passing the API credentials directly,
+# you may pass the location of a file on the filesystem containing them;
+# that file will be dot-sourced before running lego
+# This is intended to be used with Docker swarm secrets.
+ENV ACME_SECRETS_ENV_FILE /var/inflatable-wharf/secrets
 
 # Configure update frequency. Valid values are:
 # - once:    Perform the task once and exit
@@ -28,27 +36,27 @@ ENV ACME_SERVER staging
 #            *minute* that logs the command that *would* be run
 ENV ACME_FREQUENCY devel
 
-# Intended to enhance readability of my Dockerfile and scripts
-# Not intended to change at runtime
-ENV ACME_USER acme
+# All subsequent environment variables are intended to enhance readability
+# *Not intended to change at runtime*
+
+# This value cannot change because afaik the VOLUME will not change at runtime
 ENV ACME_DIR /srv/inflatable-wharf
+
+ENV ACME_USER acme
 ENV ACME_LOGFILE "$ACME_DIR/acme.log"
 
+# NOTE: adduser will set permissions on $ACME_DIR
+# NOTE: We do not use a USER statement, because crond (and therefore entrypoint.sh) must be run as root
 RUN /bin/true \
-
-    # NOTE: the adduser call also creates $ACME_DIR with correct permissions
     && addgroup -S "$ACME_USER" \
     && adduser -S -G "$ACME_USER" -s /bin/sh -h "$ACME_DIR" "$ACME_USER" \
-
     && /bin/true
 
-# NOTE: We do not use a USER statement, because crond (and therefore entrypoint.sh) must be run as root
+# REMINDER: Adjust permissions and set volume contents *before* declaring the volume
+VOLUME $ACME_DIR
 
 COPY ["perforated-cardboard.sh", "/usr/local/bin/"]
 RUN chmod 755 /usr/local/bin/perforated-cardboard.sh
 
-# CMD /bin/sh -c
-# ENTRYPOINT /usr/local/bin/perforated-cardboard.sh
-
-ENTRYPOINT ["/usr/local/bin/perforated-cardboard.sh"]
 CMD ["/bin/sh", "-i"]
+ENTRYPOINT ["/usr/local/bin/perforated-cardboard.sh"]
