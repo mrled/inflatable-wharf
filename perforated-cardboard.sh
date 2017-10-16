@@ -5,11 +5,8 @@
 set -e
 set -u
 
-lego_box_env_file=/etc/lego-box-environment
-
-echo "ENTRYPOINT Environment:"
-env | sed 's/^/  /g'
-printf "\n\n"
+addgroup -g "$ACME_GROUP_ID" -S "$ACME_USER"
+adduser -S -u "$ACME_USER_ID" -G "$ACME_USER" -s /bin/sh -h "$ACME_DIR" "$ACME_USER"
 
 # Take in a line from `env`, like "ACME_WHATEVER=hahaha"
 # If it starts with ACME_,
@@ -31,6 +28,9 @@ is_lego_dns_var() {
     fi
 }
 
+# NOTE: this is a magic path used in all other scripts like lego-box.sh
+lego_box_env_file=/etc/lego-box-environment
+
 # Save all relevant environment variables here,
 # then read this file in the legobox script,
 # because they aren't in scope when running that script from cron or su
@@ -46,52 +46,6 @@ echo "Saved environment to '$lego_box_env_file':"
 cat "$lego_box_env_file" | sed 's/^/  /g'
 
 legoboxpath="/usr/local/bin/lego-box.sh"
-
-# Write out legobox wrapper script
-# We do this from a here-string
-# (instead of just a spearate script that is COPY'd in the Dockerfile)
-# because we have the ACME_ environment variables in context here
-cat > "$legoboxpath" <<LEGOBOXEOF
-#!/bin/sh
-# Lego box: a wrapper for lego
-# Lol
-
-# set -a export ALL env vars in the lego-box-environment file
-set -a && . "$lego_box_env_file" && set +a
-
-if test -r "$ACME_SECRETS_ENV_FILE"; then
-    echo "Dot-sourcing secrets file at '$ACME_SECRETS_ENV_FILE'"
-    set -a && . "$ACME_SECRETS_ENV_FILE" && set +a
-else
-    echo "Secrets file at '$ACME_SECRETS_ENV_FILE' does not exist, nothing to dot-source"
-fi
-
-serverarg=
-if test "$ACME_SERVER" = "staging"; then
-    serverarg="--server 'https://acme-staging.api.letsencrypt.org/directory'"
-fi
-
-if test -e "${ACME_DIR}/certificates/${ACME_DOMAIN}.key"; then
-    lego_action="renew"
-else
-    lego_action="run"
-fi
-
-invocation="lego --accept-tos --path '$ACME_DIR' --email '$ACME_LETSENCRYPT_EMAIL' --domains '$ACME_DOMAIN' --dns '$ACME_DNS_AUTHENTICATOR' \$serverarg \"\$lego_action\""
-
-printf 'Running lego... start time: ' | tee '$ACME_LOGFILE'
-date '+%Y%m%d-%H%M%S' | tee '$ACME_LOGFILE'
-echo "\$invocation" | tee '$ACME_LOGFILE'
-echo "With environment:" | tee '$ACME_LOGFILE'
-env | sed 's/^/  /g' | tee '$ACME_LOGFILE'
-if test "\$1" != "--whatif"; then
-    sh -c "\$invocation" | tee '$ACME_LOGFILE'
-fi
-printf 'Finished running lego... end time: ' | tee '$ACME_LOGFILE'
-date '+%Y%m%d-%H%M%S' | tee '$ACME_LOGFILE'
-LEGOBOXEOF
-chmod 755 "$legoboxpath"
-
 cron01min='* * * * *'
 cron30day='* * 1 * *'
 
@@ -111,15 +65,15 @@ touch "$ACME_LOGFILE"
 chown "$ACME_USER:$ACME_USER" "$ACME_LOGFILE"
 
 # Show whatif at first
-su -l "$ACME_USER" -c "$legoboxpath --whatif"
+"$legoboxpath" --whatif
 
 # Run once
-test "$runonce" && su -l "$ACME_USER" -c "$legoboxpath"
+test "$runonce" && "$legoboxpath"
 
 if test "$crontab"; then
     echo "Setting crontab:"
     echo "$crontab"
-    echo "$crontab" | crontab -u "$ACME_USER" -
+    echo "$crontab" | crontab -
 
     # Set the cron daemon to run in the background
     crond -b # -L "$ACME_DIR/crond.log"

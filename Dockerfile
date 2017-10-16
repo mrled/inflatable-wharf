@@ -16,6 +16,13 @@ ENV ACME_DNS_AUTHENTICATOR manual
 # If it's any other value, use the production server
 ENV ACME_SERVER staging
 
+# NOTE: This MUST match the uid of the container that will consume the certs
+# For example, if you are using an apache container,
+# this will need to match the UID that runs apache
+# (which may be root)
+ENV ACME_USER_ID 1000
+ENV ACME_GROUP_ID 1000
+
 # You also must pass variables for your DNS provider credentials,
 # such as an API access key and/or secret
 # Run this command for more information about each specific provider:
@@ -45,17 +52,22 @@ ENV ACME_DIR /srv/inflatable-wharf
 ENV ACME_USER acme
 ENV ACME_LOGFILE "$ACME_DIR/acme.log"
 
+# NOTE: We do not use a USER statement,
+# because crond (and therefore entrypoint.sh) must be run as root
+# NOTE: We do not create the user in the Dockerfile,
+# because we accept the ACME_USER_ID variable
+# and create the user before running lego
+# to ensure correct permissions of certificate files
+
 # NOTE: adduser will set permissions on $ACME_DIR
 # NOTE: We do not use a USER statement, because crond (and therefore entrypoint.sh) must be run as root
 RUN /bin/true \
-    && addgroup -S "$ACME_USER" \
-    && adduser -S -G "$ACME_USER" -s /bin/sh -h "$ACME_DIR" "$ACME_USER" \
     && /bin/true
 
 # REMINDER: Adjust permissions and set volume contents *before* declaring the volume
 VOLUME $ACME_DIR
 
-COPY ["perforated-cardboard.sh", "/usr/local/bin/"]
+COPY ["perforated-cardboard.sh", "lego-box.sh", "/usr/local/bin/"]
 RUN chmod 755 /usr/local/bin/perforated-cardboard.sh
 
 CMD ["/bin/sh", "-i"]
