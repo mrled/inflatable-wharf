@@ -4,7 +4,17 @@ A Docker container for handling ACME DNS challenges.
 
 It's like... you can _dock_ there, after you, uhh, inflate it? Because some assembly is required? Yeah. Sorry about the name.
 
-## Example: running the container directly
+## Usage
+
+This image is designed to be run directly,
+especially while testing,
+or as part of a Docker Swarm.
+
+See the `Dockerfile` for a complete list of environment variables it will accept.
+
+See below for examples.
+
+### Example: running the container directly
 
 This command will use the `lego` container to connect to the _staging_ API endpoint,
 configure a Let's Encrypt account,
@@ -16,6 +26,9 @@ It will save the Let's Encrypt account info
 and public/private TLS keys to the `$legovolume` directory.
 
 This assumes that you are using Gandi DNS and have a valid Gandi API key.
+
+Note how we pass the `GANDI_API_KEY` directly,
+even though it doesn't begin with `ACME_`.
 
 When I ran this, it took about 30 minutes.
 
@@ -39,11 +52,14 @@ When I ran this, it took about 30 minutes.
             --server "https://acme-staging.api.letsencrypt.org/directory" \
             run
 
-## Example: using Docker swarm
+### Example: using Docker swarm
 
 How to use `inflatable-wharf` with Docker Swarm
 
 This assumes you are using Gandi DNS and have a valid Gandi API key.
+
+Note how we are not passing a `GANDI_API_KEY` environment variable directly,
+but instead keep the environment variable in the `lego_acme_env_file` secret.
 
 `example.compose.yaml`:
 
