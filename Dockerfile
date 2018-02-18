@@ -59,11 +59,6 @@ ENV ACME_LOGFILE "$ACME_DIR/acme.log"
 # and create the user before running lego
 # to ensure correct permissions of certificate files
 
-# NOTE: adduser will set permissions on $ACME_DIR
-# NOTE: We do not use a USER statement, because crond (and therefore entrypoint.sh) must be run as root
-RUN /bin/true \
-    && /bin/true
-
 # REMINDER: Adjust permissions and set volume contents *before* declaring the volume
 VOLUME $ACME_DIR
 
