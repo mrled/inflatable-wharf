@@ -5,8 +5,37 @@
 set -e
 set -u
 
+# test -k is sadly not posix, but it is supported widely,
+# including by GNU, BusyBox, and macOS 'test' commands
+if test -k "$ACME_DIR"; then
+    # We set $ACME_DIR to be the new acme user's homedir, and when the sticky
+    # bit is set, we cannot chown all files under it; in fact, a chown command
+    # will hang indefinitely.
+    cat << ENDERRMSG
+
+==== ERROR ====
+
+\$ACME_DIR is currently set to:
+    $ACME_DIR
+
+However, that directory has the sticky bit set. This is not supported, because
+we use \$ACME_DIR as the home directory for a user inside the container.
+
+The most likely reason this is happening is that you have probably used /tmp as
+the source for the \$ACME_DIR volume, by e.g. passing
+    --volume=/tmp:/srv/inflatable-wharf
+Use a different directory, without the sticky bit set, as the source for
+\$ACME_DIR.
+
+ENDERRMSG
+    exit 1
+fi
+
 addgroup -g "$ACME_GROUP_ID" -S "$ACME_USER"
 adduser -S -u "$ACME_USER_ID" -G "$ACME_USER" -s /bin/sh -h "$ACME_DIR" "$ACME_USER"
+
+printf "\n> id $ACME_USER:\n$(id "$ACME_USER")\n"
+printf "> tail -n1 /etc/passwd:\n$(tail -n1 /etc/passwd)\n\n"
 
 # Take in a line from `env`, like "ACME_WHATEVER=hahaha"
 # If it starts with ACME_,
