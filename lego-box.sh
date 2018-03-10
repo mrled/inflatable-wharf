@@ -36,10 +36,7 @@ if test "$1" != "--whatif"; then
     su "$ACME_USER" -c "$invocation" | tee "$ACME_LOGFILE"
 fi
 
-echo "$ACME_DIR:"
-ls -alF "$ACME_DIR"
-echo "$ACME_DIR/certificates:"
-ls -alF "$ACME_DIR/certificates"
+printf "\n> find $ACME_DIR:\n$(find "$ACME_DIR")\n\n"
 
 printf 'Finished running lego... end time: ' | tee "$ACME_LOGFILE"
 date '+%Y%m%d-%H%M%S' | tee "$ACME_LOGFILE"
