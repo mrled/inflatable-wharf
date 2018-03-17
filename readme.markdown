@@ -14,9 +14,29 @@ See the `Dockerfile` for a complete list of environment variables it will accept
 
 See below for examples.
 
-### Example: running the container directly
+### A note on checking out this repo
 
-This command will use the `lego` container to connect to the _staging_ API endpoint,
+Like all shell scripts, the scripts in this file must have LF line endings (the Unix default),
+not CRLF line endings (the Windows default).
+On Windows, you should clone it like this to ensure the line endings are correct:
+
+    git clone -c core.autocrlf=off git@github.com:mrled/inflatable-wharf.git
+
+If you build the Docker container with CRLF line endings in the shell scripts,
+you will see an error like this trying to run it:
+
+    standard_init_linux.go:195: exec user process caused "no such file or directory"
+
+### Notes on different authenticators
+
+I don't have experience with most of the DNS authenticators supported by lego,
+but I have used both `gandi` and `route53`.
+In my experience, the `gandi` authenticator might take ~30 minutes,
+while the `route53` authenticator was only takeing ~2 minutes.
+
+### Example: running `inflatable-wharf` on the command line
+
+This command will use the `inflatable-wharf` container to connect to the _staging_ API endpoint,
 configure a Let's Encrypt account,
 create a private key,
 request that the ACME server signs the private key,
@@ -25,10 +45,29 @@ using Gandi's API to set and delete the challenge record.
 It will save the Let's Encrypt account info
 and public/private TLS keys to the `$legovolume` directory.
 
-This assumes that you are using Gandi DNS and have a valid Gandi API key.
-
 Note how we pass the `GANDI_API_KEY` directly,
 even though it doesn't begin with `ACME_`.
+
+    letsencrypt_email="you@example.com"
+    domain="jenkins.example.com"
+    gandi_api_key="yourapikey"
+    lego_volume="$(pwd)/lego-temp-volume"
+    mkdir -p "$lego_volume"
+
+    docker run \
+        --rm --interactive --tty \
+        --env "GANDI_API_KEY=$gandi_api_key" \
+        --env "ACME_LETSENCRYPT_EMAIL=$letsencrypt_email" \
+        --env "ACME_DOMAIN=$domain" \
+        --env "ACME_DNS_AUTHENTICATOR=gandi" \
+        --env "ACME_SERVER=staging" \
+        --env "ACME_FREQUENCY=monthly \
+        --volume "${lego_volume}:/srv/inflatable-wharf" \
+        mrled/inflatable-wharf:latest
+
+### Example: running the `lego` container directly
+
+This command will use the `lego` container to accomplish the same task as we did in `inflatable-wharf` above.
 
 When I ran this, it took about 30 minutes.
 
@@ -39,9 +78,7 @@ When I ran this, it took about 30 minutes.
     mkdir -p "$lego_volume"
 
     docker run \
-        --rm \
-        --interactive \
-        --tty \
+        --rm --interactive --tty \
         --env "GANDI_API_KEY=$gandi_api_key" \
         --volume "${lego_volume}:/.lego" \
         xenolf/lego \
@@ -52,7 +89,7 @@ When I ran this, it took about 30 minutes.
             --server "https://acme-staging.api.letsencrypt.org/directory" \
             run
 
-### Example: using Docker swarm
+### Example: using Docker swarm with `inflatable-wharf`
 
 How to use `inflatable-wharf` with Docker Swarm
 
@@ -129,7 +166,7 @@ Which might return output like this:
 
     ID                  NAME                       MODE                REPLICAS            IMAGE                           PORTS
     uvafm36cyz38        jenkins_jenkins            replicated          1/1                 jenkins/jenkins:lts             *:80->8080/tcp,*:443->8443/tcp
-    vla3440dmlwn        jenkins_inflatable-wharf   replicated          1/1                 mrled/inflatable-wharf:latest   
+    vla3440dmlwn        jenkins_inflatable-wharf   replicated          1/1                 mrled/inflatable-wharf:latest
 
 And then grabbing the log for the service in question based on that service ID:
 
