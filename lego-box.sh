@@ -12,10 +12,11 @@ else
     echo "Secrets file at '$ACME_SECRETS_ENV_FILE' does not exist, nothing to dot-source"
 fi
 
-serverarg=
-if test "$ACME_SERVER" = "staging"; then
-    serverarg="--server 'https://acme-staging.api.letsencrypt.org/directory'"
-fi
+case "$ACME_SERVER" in
+    staging) serverarg="--server 'https://acme-staging.api.letsencrypt.org/directory'" ;;
+    production) serverarg="" ;;
+    *) echo "Unknown value for ACME_SERVER '$ACME_SERVER'"; exit 1 ;;
+esac
 
 if test -e "${ACME_DIR}/certificates/${ACME_DOMAIN}.key"; then
     lego_action="renew"
