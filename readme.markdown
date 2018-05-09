@@ -139,3 +139,19 @@ And then grabbing the log for the service in question based on that service ID:
 (Note that `docker service logs` operates on _service_ IDs you get from `docker stack services`,
 not _container_ IDs that you might get from `docker ps`)
 
+## TO DO
+
+- Do NOT renew cert on startup all the time
+  - This is dangerous - what if the Docker container gets into a restart loop and gets me throttled by Let's Encrypt?
+- Get an initial cert on startup if the existing cert does not exist
+  - happening now
+- Renew cert on startup if the existing cert is expiring before the next run from cron
+  - https://stackoverflow.com/questions/21297853/how-to-determine-ssl-cert-expiration-date-from-a-pem-encoded-certificate#21297927
+  - see end date: `openssl x509 -enddate -noout -in <cert file>`
+  - check whether cert will expire in X seconds: `openssl x509 -checkend <number of seconds> -noout -in <cert file>`
+  - Comparing dates would be much easier in a real language...
+- Renew cert on startup if the cert exists but was issued by a different server (staging/production)
+  - see the cert details including issuer: `openssl x509 -text -noout -in <signed cert>`
+  - check whether cert was signed by a given CA: `openssl verify -verbose -CAFile <ca cert> <signed cer>`
+  - Parsing openssl output would be much easier with Python,
+    and maybe there are Python libraries that won't even require shelling out to openssl...
