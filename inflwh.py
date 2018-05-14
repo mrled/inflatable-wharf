@@ -25,7 +25,10 @@ from cryptography.hazmat.backends import default_backend
 
 
 SCRIPTDIR = os.path.dirname(os.path.realpath(__file__))
-logging.basicConfig(level=logging.INFO, format='[%(asctime)s] [%(name)s] [%(levelname)s] %(message)s')
+logging.basicConfig(
+    level=logging.INFO,
+    format='[%(asctime)s]\t%(levelname)s:\t%(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S')
 LOGGER = logging.getLogger(__name__)
 
 
@@ -78,6 +81,16 @@ def abswalk(path):
     return result
 
 
+def indent(instr, spaces=2):
+    """Indent each line of some text
+
+    instr:      The input text
+    spaces:     The number of spaces to indent each line
+    """
+    string = instr.decode() if hasattr(instr, 'decode') else instr
+    return '\n'.join([f"{' '*spaces}{line}" for line in string.split('\n')])
+
+
 def useradd(username, uid, gid, home, groupname=None, shell='/bin/sh'):
     """Create a user
 
@@ -88,16 +101,29 @@ def useradd(username, uid, gid, home, groupname=None, shell='/bin/sh'):
     if not groupname:
         groupname = username
     try:
-        subprocess.run(['addgroup', '-g', gid, '-S', groupname])
-        LOGGER.debug(f"Successfull created group {groupname}")
+        grpproc = subprocess.run(
+            ['addgroup', '-g', str(gid), '-S', groupname],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        LOGGER.debug(
+            "Successfull created group {grp}.\nSTDOUT:\n{out}\nSTDERR:\n{err}".format(
+                grp=groupname, out=indent(grpproc.stdout), err=indent(grpproc.stderr)))
     except subprocess.CalledProcessError:
-        LOGGER.debug(f"Group {groupname} already exists")
+        LOGGER.debug(
+            "FAILED to create group {grp}.\nSTDOUT:\n{out}\nSTDERR:\n{err}".format(
+                grp=groupname, out=indent(grpproc.stdout), err=indent(grpproc.stderr)))
+        raise
     try:
-        subprocess.run(
-            ['adduser', '-S', '-u', uid, '-G', groupname, '-s', shell, '-h', home, username])
-        LOGGER.debug(f"Successfull created user {username}")
+        usrproc = subprocess.run(
+            ['adduser', '-S', '-u', str(uid), '-G', groupname, '-s', shell, '-h', home, username],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        LOGGER.debug(
+            "Successfully created user {usr}.\nSTDOUT:\n{out}\nSTDERR:\n{err}".format(
+                usr=username, out=indent(usrproc.stdout), err=indent(usrproc.stderr)))
     except subprocess.CalledProcessError:
-        LOGGER.debug(f"User {username} already exists")
+        LOGGER.debug(
+            "FAILED to create user {usr}.\nSTDOUT:\n{out}\nSTDERR:\n{err}".format(
+                usr=username, out=indent(usrproc.stdout), err=indent(usrproc.stderr)))
+        raise
 
 
 def dropprivs(uid, gid, umask=0o077):
@@ -111,7 +137,7 @@ def dropprivs(uid, gid, umask=0o077):
         os.setgid(gid)
         os.setuid(uid)
         os.umask(umask)
-        user_pwd = pwd.getpwuid(1001)
+        user_pwd = pwd.getpwuid(uid)
         os.environ['HOME'] = user_pwd.pw_dir
         os.environ['SHELL'] = user_pwd.pw_shell
         os.chdir(user_pwd.pw_dir)
@@ -122,12 +148,6 @@ def dropprivs(uid, gid, umask=0o077):
 
 
 ## Implementation classes/functions
-
-
-class LegoAction(enum.Enum):
-    Renew = "renew"
-    Run = "run"
-    NoAction = None
 
 
 class LegoBox():
@@ -185,17 +205,23 @@ class LegoBox():
             return "run"
 
     def run(self, whatif=False, env=os.environ.copy()):
-        LOGGER.info("Running lego as [{cmd}] with environment\n{env}".format(
+        LOGGER.info("Running lego in {mode} mode as [{cmd}] with environment\n{env}".format(
+            mode="WHATIF" if whatif else "OPERATIONAL",
             cmd=' '.join(self.command),
-            env='\n  '.join([f"{k} = {v}" for k, v in env.items()])))
+            env='\n'.join([f"  {k} = {v}" for k, v in env.items()])))
 
         if not whatif:
-            proc = subprocess.run(self.command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            LOGGER.info(
-                f"lego exited with {proc.returncode}\nSTDOUT:\n{proc.stdout}\nSTDERR:\n{proc.stderr}")
+            try:
+                proc = subprocess.run(self.command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            except subprocess.CalledProcessError:
+                pass
+            finally:
+                LOGGER.debug(
+                    "lego exited with code {rc}.\nSTDOUT:\n{out}\nSTDERR:\n{err}".format(
+                        rc=proc.returncode, out=indent(proc.stdout), err=indent(proc.stderr)))
 
-        acme_dir_contents = '\n  '.join(abswalk(self.lego_dir))
-        LOGGER.info(f"Current contents of {self.lego_dir}:\n{acme_dir_contents}")
+        acme_dir_contents = '\n'.join(abswalk(self.lego_dir))
+        LOGGER.info(f"Current contents of {self.lego_dir}:\n{indent(acme_dir_contents)}")
 
     def shouldrun(self, min_cert_validity=25):
         try:
@@ -216,26 +242,6 @@ class LegoBox():
             return True
 
 
-# def getlegovars(variables=os.environ):
-#     """Get a dict of name=value environment variable pairs relating to lego
-
-#     Variables are assumed to be used by the lego command if the name starts with ACME_,
-#     or if it is found in the output of 'lego dnshelp'
-#     """
-
-#     def islegovar(varname, dnshelp):
-#         return (
-#             varname.startswith('ACME_') or
-#             (re.match('^([0-9A-Z]*_*)*$', varname) and varname in dnshelp))
-
-#     dnshelp = subprocess.run(['lego', 'dnshelp'], stdout=subprocess.PIPE).stdout.decode()
-#     legovars = {}
-#     for varname, value in variables.items():
-#         if islegovar(varname, dnshelp):
-#             legovars[varname] = value
-#     return legovars
-
-
 def get_cert_expiration(certificate):
     with open(certificate, 'rb') as certfile:
         cert_contents = certfile.read()
@@ -243,49 +249,15 @@ def get_cert_expiration(certificate):
     return cert.not_valid_after
 
 
-# def maybe_run_lego(
-#         lego_dir, letsencrypt_email, domain, dns_authenticator, letsencrypt_server,
-#         whatif=False):
-#     """legobox() is, you see, a wrapper for lego
-
-#     (Sorry)
-
-#     Arguments:
-#     lego_dir            The location to save the certificates
-#     letsencrypt_email   An email address to send to Let's Encrypt
-#     domain              The domain to try to register for
-#     dns_authenticator   The DNS hosting provider
-#     letsencrypt_server  Either "staging" or "production"
-#     whatif              Do not actually run, but show what would have been run
-#     """
-
-#     action = calculate_lego_action(lego_dir, domain)
-#     if action is LegoAction.NoAction:
-#         return
-
-#     command = [
-#         'lego', '--accept-tos',
-#         '--path', lego_dir,
-#         '--email', letsencrypt_email,
-#         '--domains', domain,
-#         '--dns', dns_authenticator,
-#     ]
-
-#     if letsencrypt_server == "staging":
-#         command += ['--server', 'https://acme-staging.api.letsencrypt.org/directory']
-#     elif letsencrypt_server == "production":
-#         pass
-#     else:
-#         raise Exception(f"Unknown Let's Encrypt server '{letsencrypt_server}'")
-
-#     command += [action.value]
-
-
-def eventloop(legobox, min_cert_validity=25, whatif=False, sleepsecs=300):
+def eventloop(legobox, min_cert_validity=25, whatif=False, sleepsecs=10):
     while True:
         if legobox.shouldrun():
+            LOGGER.debug("Event loop fired, running lego...")
             legobox.run(whatif=whatif)
+        else:
+            LOGGER.debug("Event loop fired, but should not run lego")
 
+        LOGGER.debug(f"Event loop sleeping for {sleepsecs} seconds...")
         time.sleep(sleepsecs)
 
 
@@ -295,10 +267,13 @@ def parseargs(*args, **kwargs):
         "--debug", "-d", action='store_true',
         help="Include debugging output and start the debugger on unhandled exceptions")
     parser.add_argument(
+        '--logfile', default=None, type=ResolvedPath,
+        help="The path to the log file. Defaults to acme.log in the ACME directory")
+    parser.add_argument(
         '--acme-dir', default=os.environ.get("ACME_DIR"),
         help='The script directory. This must match the value set during container build time')
     parser.add_argument(
-        '--acme-username', default=os.environ.get("ACME_USER"),
+        '--acme-username', default="acme",
         help='The name of the user to run lego')
     parser.add_argument(
         '--acme-uid', default=int(os.environ.get("ACME_USER_ID")), type=int,
@@ -319,13 +294,6 @@ def parseargs(*args, **kwargs):
     parser.add_argument(
         '--domain', default=os.environ.get("ACME_DOMAIN"),
         help="The domain to request certificates for")
-    # TODO: Do I need this?
-    # parser.add_argument(
-    #     '--lego-box-envfile-path', type=ResolvedPath,
-    #     default=ResolvedPath('/etc/lego-box-environment'),
-    #     help=(
-    #         'The path to the lego-box environment path. '
-    #         'Hard-coded to the default value in other files - do not change'))
     parser.add_argument(
         '--only-once', action='store_true',
         help="Run lego once and then exit")
@@ -336,18 +304,30 @@ def parseargs(*args, **kwargs):
         '--whatif', action='store_true',
         help="Do not actually request certificates, but print what would be done")
 
-    return parser.parse_args()
+    parsed = parser.parse_args()
+
+    if not parsed.logfile:
+        parsed.logfile = os.path.join(parsed.acme_dir, 'acme.log')
+
+    return parsed
 
 
 def main(*args, **kwargs):
     parsed = parseargs(args, kwargs)
+
+    filehandler = logging.FileHandler(parsed.logfile)
+    filehandler.setLevel(logging.DEBUG)
+    formatter = logging.Formatter(
+        '[%(asctime)s]\t%(levelname)s:\t%(message)s', datefmt='%Y-%m-%d %H:%M:%S')
+    filehandler.setFormatter(formatter)
+    LOGGER.addHandler(filehandler)
 
     if parsed.debug:
         sys.excepthook = idb_excepthook
         LOGGER.setLevel(logging.DEBUG)
 
     try:
-        useradd(parsed.acme_username, parsed.acme_uid, parsed.acme_gid, parsed.acme_home)
+        useradd(parsed.acme_username, parsed.acme_uid, parsed.acme_gid, parsed.acme_dir)
     except HomeDirectoryStickyBitSet:
         LOGGER.error(textwrap.dedent(f"""
             The ACME_DIR was set to '{parsed.acme_dir}'
@@ -373,25 +353,6 @@ def main(*args, **kwargs):
             box.run(whatif=parsed.whatif)
     else:
         eventloop(box, whatif=parsed.whatif)
-
-    # if parsed.frequency == "once":
-    #     legobox(
-    #         parsed.acme_dir, parsed.letsencrypt_email, parsed.domain, parsed.dns_authenticator,
-    #         parsed.letsencrypt_server)
-    #     raise Exception("Write the rest of the program, idiot")
-
-    # if parsed.frequency in ('monthly', 'devel'):
-        # context = daemon.DaemonContext()
-        # context.uid = parsed.acme_uid
-        # context.gid = parsed.acme_gid
-        # with context:
-        #     raise Exception("Write the rest of the program, idiot")
-
-    # legovarsj = json.dumps(getlegovars(), sort_keys=True, indent=4)
-    # with open(parsed.lego_box_envfile_path, 'w') as efp:
-    #     efp.write(legovarsj)
-    # print(f"Saved environment variables to {parsed.lego_box_envfile_path}:")
-    # print(legovarsj)
 
 
 if __name__ == '__main__':

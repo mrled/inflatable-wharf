@@ -29,45 +29,38 @@ ENV ACME_GROUP_ID 1000
 #   docker run xenolf/lego:latest dnshelp
 # Note that these variables are not prefixed with "ACME_"
 
-# Instead of passing the API credentials directly,
-# you may pass the location of a file on the filesystem containing them;
-# that file will be dot-sourced before running lego
-# This is intended to be used with Docker swarm secrets.
-ENV ACME_SECRETS_ENV_FILE /var/inflatable-wharf/secrets
-
-# Configure update frequency. Valid values are:
-# - once:    Perform the task once and exit
-# - monthly: Perform the task once, and run a cron daemon configured to
-#            perform it again on the first of every month
-# - devel:   *Never* perform the task, but run a cron job that executes every
-#            *minute* that logs the command that *would* be run
-ENV ACME_FREQUENCY devel
-
 # All subsequent environment variables are intended to enhance readability
 # *Not intended to change at runtime*
 
 # This value cannot change because afaik the VOLUME will not change at runtime
 ENV ACME_DIR /srv/inflatable-wharf
 
-ENV ACME_USER acme
-ENV ACME_LOGFILE "$ACME_DIR/acme.log"
-
-# NOTE: We do not use a USER statement,
-# because crond (and therefore entrypoint.sh) must be run as root
-# NOTE: We do not create the user in the Dockerfile,
+# NOTE: We do not use a USER statement or create the user in the Dockerfile,
 # because we accept the ACME_USER_ID variable
 # and create the user before running lego
 # to ensure correct permissions of certificate files
 
 RUN true \
     && apk update \
-    && apk install \
+    && apk add \
+        # Our init system
         dumb-init \
+        # Useful to have in the image for debugging, but not used in the code
         openssl \
+        # 🐍
         python3 \
-    && python -m ensurepip \
-    && python -m pip install -U pip \
-    && python -m pip install crytography \
+        \
+        # For compiling the cryptography module
+        gcc \
+        libffi-dev \
+        musl-dev \
+        openssl-dev \
+        python3-dev \
+        \
+    && python3 -m ensurepip \
+    && python3 -m pip install -U pip \
+    && python3 -m pip install \
+        cryptography \
     && true
 
 # REMINDER: Adjust permissions and set volume contents *before* declaring the volume
