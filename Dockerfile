@@ -14,7 +14,7 @@ ENV ACME_DNS_AUTHENTICATOR manual
 
 # If this is "staging", use the staging server
 # If it's any other value, use the production server
-ENV ACME_SERVER staging
+ENV ACME_LETSENCRYPT_SERVER staging
 
 # NOTE: This MUST match the uid of the container that will consume the certs
 # For example, if you are using an apache container,
@@ -59,11 +59,22 @@ ENV ACME_LOGFILE "$ACME_DIR/acme.log"
 # and create the user before running lego
 # to ensure correct permissions of certificate files
 
+RUN true \
+    && apk update \
+    && apk install \
+        dumb-init \
+        openssl \
+        python3 \
+    && python -m ensurepip \
+    && python -m pip install -U pip \
+    && python -m pip install crytography \
+    && true
+
 # REMINDER: Adjust permissions and set volume contents *before* declaring the volume
 VOLUME $ACME_DIR
 
-COPY ["perforated-cardboard.sh", "lego-box.sh", "/usr/local/bin/"]
-RUN chmod 755 /usr/local/bin/perforated-cardboard.sh
+COPY ["inflwh.py", "/usr/local/bin/"]
+RUN chmod 755 /usr/local/bin/inflwh.py
 
-CMD ["/bin/sh", "-i"]
-ENTRYPOINT ["/usr/local/bin/perforated-cardboard.sh"]
+ENTRYPOINT ["/usr/bin/dumb-init", "--"]
+CMD ["/usr/bin/python3", "/usr/local/bin/inflwh.py"]
