@@ -96,6 +96,27 @@ def indent(instr, spaces=2):
     return '\n'.join([f"{' '*spaces}{line}" for line in string.split('\n')])
 
 
+def subprocess_run_log(command, env=os.environ.copy()):
+    """Run and log a command
+
+    command     A list making up a command and its arguments
+    env         An optional dictionary of environment variables; defaults to this process's env
+
+    Returns the CompletedProcess object if the process exits with a zer return code
+    Throws subprocess.CalledProcessError if the process exites with a nonzero return code
+    """
+    proc = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
+    LOGGER.debug("{cmdname} exited with code {rc}\n{out}\n{err}".format(
+        cmdname=command[0],
+        rc=proc.returncode,
+        out="STDOUT:\n{indent(proc.stdout)}" if proc.stdout else "STDOUT: NONE",
+        err="STDERR:\n{indent(proc.stderr)}" if proc.stderr else "STDERR: NONE"))
+    if proc.returncode != 0:
+        raise subprocess.CalledProcessError(
+            proc.returncode, command, output=proc.stdout, stderr=proc.stderr)
+    return proc
+
+
 def useradd(username, uid, gid, home, groupname=None, shell='/bin/sh'):
     """Create a user
 
@@ -111,24 +132,9 @@ def useradd(username, uid, gid, home, groupname=None, shell='/bin/sh'):
         raise HomeDirectoryStickyBitSet()
     if not groupname:
         groupname = username
-    try:
-        grpproc = subprocess.run(
-            ['addgroup', '-g', str(gid), '-S', groupname],
-            stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    finally:
-        LOGGER.debug("addgroup exited with code {grpproc.returncode}\n{out}\n{err}".format(
-            grp=groupname,
-            out="STDOUT:\n{indent(grpproc.stdout)}" if grpproc.stdout else "STDOUT: NONE",
-            err="STDERR:\n{indent(grpproc.stderr)}" if grpproc.stderr else "STDERR: NONE"))
-    try:
-        usrproc = subprocess.run(
-            ['adduser', '-S', '-u', str(uid), '-G', groupname, '-s', shell, '-h', home, username],
-            stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    finally:
-        LOGGER.debug("adduser exited with code {usrproc.returncode}\n{out}\n{err}".format(
-            grp=groupname,
-            out="STDOUT:\n{indent(usrproc.stdout)}" if usrproc.stdout else "STDOUT: NONE",
-            err="STDERR:\n{indent(usrproc.stderr)}" if usrproc.stderr else "STDERR: NONE"))
+    subprocess_run_log(['addgroup', '-g', str(gid), '-S', groupname])
+    subprocess_run_log(
+        ['adduser', '-S', '-u', str(uid), '-G', groupname, '-s', shell, '-h', home, username])
 
 
 def dropprivs(uid, gid, umask=0o077):
@@ -239,12 +245,7 @@ class LegoBox():
             env='\n'.join([f"  {k} = {v}" for k, v in env.items()])))
 
         if not whatif:
-            try:
-                proc = subprocess.run(self.command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            finally:
-                outmsg = f"STDOUT:\n{indent(proc.stdout)}" if proc.stdout else "STDOUT: NONE"
-                errmsg = f"STDERR:\n{indent(proc.stderr)}" if proc.stderr else "STDERR: NONE"
-                LOGGER.debug(f"lego exited with code {proc.returncode}.\n{outmsg}\n{errmsg}")
+            subprocess_run_log(self.command, env=env)
 
         acme_dir_contents = '\n'.join(abswalk(self.lego_dir))
         LOGGER.info(f"Current contents of {self.lego_dir}:\n{indent(acme_dir_contents)}")
