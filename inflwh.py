@@ -11,7 +11,6 @@ import enum
 import json
 import logging
 import os
-import pwd
 import re
 import subprocess
 import textwrap
@@ -104,26 +103,20 @@ def useradd(username, uid, gid, home, groupname=None, shell='/bin/sh'):
         grpproc = subprocess.run(
             ['addgroup', '-g', str(gid), '-S', groupname],
             stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        LOGGER.debug(
-            "Successfull created group {grp}.\nSTDOUT:\n{out}\nSTDERR:\n{err}".format(
-                grp=groupname, out=indent(grpproc.stdout), err=indent(grpproc.stderr)))
-    except subprocess.CalledProcessError:
-        LOGGER.debug(
-            "FAILED to create group {grp}.\nSTDOUT:\n{out}\nSTDERR:\n{err}".format(
-                grp=groupname, out=indent(grpproc.stdout), err=indent(grpproc.stderr)))
-        raise
+    finally:
+        LOGGER.debug("addgroup exited with code {grpproc.returncode}\n{out}\n{err}".format(
+            grp=groupname,
+            out="STDOUT:\n{indent(grpproc.stdout)}" if grpproc.stdout else "STDOUT: NONE",
+            err="STDERR:\n{indent(grpproc.stderr)}" if grpproc.stderr else "STDERR: NONE"))
     try:
         usrproc = subprocess.run(
             ['adduser', '-S', '-u', str(uid), '-G', groupname, '-s', shell, '-h', home, username],
             stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        LOGGER.debug(
-            "Successfully created user {usr}.\nSTDOUT:\n{out}\nSTDERR:\n{err}".format(
-                usr=username, out=indent(usrproc.stdout), err=indent(usrproc.stderr)))
-    except subprocess.CalledProcessError:
-        LOGGER.debug(
-            "FAILED to create user {usr}.\nSTDOUT:\n{out}\nSTDERR:\n{err}".format(
-                usr=username, out=indent(usrproc.stdout), err=indent(usrproc.stderr)))
-        raise
+    finally:
+        LOGGER.debug("adduser exited with code {usrproc.returncode}\n{out}\n{err}".format(
+            grp=groupname,
+            out="STDOUT:\n{indent(usrproc.stdout)}" if usrproc.stdout else "STDOUT: NONE",
+            err="STDERR:\n{indent(usrproc.stderr)}" if usrproc.stderr else "STDERR: NONE"))
 
 
 def dropprivs(uid, gid, umask=0o077):
@@ -131,20 +124,30 @@ def dropprivs(uid, gid, umask=0o077):
     """
 
     try:
-        if os.getuid() != 0:
-            return
-        os.setgroups([])   # Do not inherit root groups
-        os.setgid(gid)
-        os.setuid(uid)
-        os.umask(umask)
-        user_pwd = pwd.getpwuid(uid)
-        os.environ['HOME'] = user_pwd.pw_dir
-        os.environ['SHELL'] = user_pwd.pw_shell
-        os.chdir(user_pwd.pw_dir)
+        import pwd
+    except ModuleNotFoundError:
+        LOGGER.error("We are probably on Windows, cannot drop privileges")
+        raise RunningOnWindowsError()
 
+    try:
+        getuid = os.getuid
+        setgroups = os.setgroups
+        setgid = os.setgid
+        setuid = os.setuid
     except AttributeError:
         LOGGER.error("We are probably on Windows, cannot drop privileges")
         raise RunningOnWindowsError()
+
+    if getuid() != 0:
+        return
+    setgroups([])   # Do not inherit root groups
+    setgid(gid)
+    setuid(uid)
+    os.umask(umask)
+    user_pwd = pwd.getpwuid(uid)
+    os.environ['HOME'] = user_pwd.pw_dir
+    os.environ['SHELL'] = user_pwd.pw_shell
+    os.chdir(user_pwd.pw_dir)
 
 
 ## Implementation classes/functions
@@ -213,12 +216,10 @@ class LegoBox():
         if not whatif:
             try:
                 proc = subprocess.run(self.command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            except subprocess.CalledProcessError:
-                pass
             finally:
-                LOGGER.debug(
-                    "lego exited with code {rc}.\nSTDOUT:\n{out}\nSTDERR:\n{err}".format(
-                        rc=proc.returncode, out=indent(proc.stdout), err=indent(proc.stderr)))
+                outmsg = f"STDOUT:\n{indent(proc.stdout)}" if proc.stdout else "STDOUT: NONE"
+                errmsg = f"STDERR:\n{indent(proc.stderr)}" if proc.stderr else "STDERR: NONE"
+                LOGGER.debug(f"lego exited with code {proc.returncode}.\n{outmsg}\n{errmsg}")
 
         acme_dir_contents = '\n'.join(abswalk(self.lego_dir))
         LOGGER.info(f"Current contents of {self.lego_dir}:\n{indent(acme_dir_contents)}")
@@ -257,7 +258,6 @@ def eventloop(legobox, min_cert_validity=25, whatif=False, sleepsecs=10):
         else:
             LOGGER.debug("Event loop fired, but should not run lego")
 
-        LOGGER.debug(f"Event loop sleeping for {sleepsecs} seconds...")
         time.sleep(sleepsecs)
 
 
