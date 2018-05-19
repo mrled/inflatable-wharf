@@ -32,10 +32,14 @@ LOGGER = logging.getLogger(__name__)
 
 
 class RunningOnWindowsError(BaseException):
+    """Indicate that we are running on Windows and cannot proceed
+    """
     pass
 
 
 class HomeDirectoryStickyBitSet(BaseException):
+    """Indicate that the sticky bit was set on the home directory
+    """
     pass
 
 
@@ -64,6 +68,8 @@ def idb_excepthook(type, value, tb):
 
 
 def sticky_bit_set(path):
+    """Test whether the sticky bit is set for a given path
+    """
     return os.stat(path).st_mode & 0o1000 == 0o1000
 
 
@@ -94,6 +100,12 @@ def useradd(username, uid, gid, home, groupname=None, shell='/bin/sh'):
     """Create a user
 
     Use the Busybox adduser and addgroup commands
+
+    username        Name of the new user
+    uid             UID for the new user
+    gid             GID for the new user
+    groupname       Name of the new user group; defaults to username
+    shell           Shell for new user; defaults to /bin/sh
     """
     if sticky_bit_set(home):
         raise HomeDirectoryStickyBitSet()
@@ -121,6 +133,10 @@ def useradd(username, uid, gid, home, groupname=None, shell='/bin/sh'):
 
 def dropprivs(uid, gid, umask=0o077):
     """Drop privileges from root
+
+    uid     Change to this UID
+    gid     Change to this GID
+    umask   Set umask to this value
     """
 
     try:
@@ -181,6 +197,8 @@ class LegoBox():
 
     @property
     def command(self):
+        """The command to pass to subprocess.run().
+        """
         command = [
             'lego', '--accept-tos',
             '--path', self.lego_dir,
@@ -202,12 +220,19 @@ class LegoBox():
 
     @property
     def action(self):
+        """The action to pass to the lego command.
+        """
         if os.path.exists(self.certificate_path):
             return "renew"
         else:
             return "run"
 
     def run(self, whatif=False, env=os.environ.copy()):
+        """Run the lego command.
+
+        whatif      Do not actually run lego, but show what would have run
+        env         A dictionary to pass as the environment; defaults to our env
+        """
         LOGGER.info("Running lego in {mode} mode as [{cmd}] with environment\n{env}".format(
             mode="WHATIF" if whatif else "OPERATIONAL",
             cmd=' '.join(self.command),
@@ -225,6 +250,10 @@ class LegoBox():
         LOGGER.info(f"Current contents of {self.lego_dir}:\n{indent(acme_dir_contents)}")
 
     def shouldrun(self, min_cert_validity=25):
+        """Test whether certificates should be requested/renewed
+
+        min_cert_validity   If cert exists but is invalid this many days into the future, renew it
+        """
         try:
             expires = get_cert_expiration(self.certificate_path)
             expiresdelta = expires - datetime.datetime.now()
@@ -244,6 +273,8 @@ class LegoBox():
 
 
 def get_cert_expiration(certificate):
+    """Get the certificate expiration date as a DateTime object
+    """
     with open(certificate, 'rb') as certfile:
         cert_contents = certfile.read()
     cert = x509.load_pem_x509_certificate(cert_contents, default_backend())
@@ -251,6 +282,13 @@ def get_cert_expiration(certificate):
 
 
 def eventloop(legobox, min_cert_validity=25, whatif=False, sleepsecs=10):
+    """The inflatable-wharf event loop
+
+    legobox             A LegoBox() instance
+    min_cert_validity   If a cert is not valid for this many days into the future, renew
+    whatif              If True, do not actually run lego
+    sleepsecs           Number of seconds to sleep between iterations of the event loop
+    """
     while True:
         if legobox.shouldrun():
             LOGGER.debug("Event loop fired, running lego...")
@@ -262,6 +300,8 @@ def eventloop(legobox, min_cert_validity=25, whatif=False, sleepsecs=10):
 
 
 def parseargs(*args, **kwargs):
+    """Parse command-line arguments.
+    """
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--debug", "-d", action='store_true',
@@ -313,6 +353,8 @@ def parseargs(*args, **kwargs):
 
 
 def main(*args, **kwargs):
+    """Entrypoint for this script.
+    """
     parsed = parseargs(args, kwargs)
 
     filehandler = logging.FileHandler(parsed.logfile)
