@@ -350,7 +350,12 @@ def main(*args, **kwargs):
 
     if parsed.only_once:
         if box.shouldrun():
+            LOGGER.info("Arguments indicated a single run, running...")
             box.run(whatif=parsed.whatif)
+        else:
+            LOGGER.info(
+                "Arguments indicated a single run, "
+                "but certs already exist and do not yet need to be renewed.")
     else:
         eventloop(box, whatif=parsed.whatif)
 
