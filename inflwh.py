@@ -270,8 +270,8 @@ def parseargs(*args, **kwargs):
         '--logfile', default=None, type=ResolvedPath,
         help="The path to the log file. Defaults to acme.log in the ACME directory")
     parser.add_argument(
-        '--acme-dir', default=os.environ.get("ACME_DIR"),
-        help='The script directory. This must match the value set during container build time')
+        '--acme-dir', default=ResolvedPath("/srv/inflatable-wharf"), type=ResolvedPath,
+        help='The script directory. This must match the volume set in Dockerfile.')
     parser.add_argument(
         '--acme-username', default="acme",
         help='The name of the user to run lego')

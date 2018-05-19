@@ -10,6 +10,10 @@ ENV ACME_LETSENCRYPT_EMAIL you@example.com
 ENV ACME_DOMAIN example.com
 
 # The name of the DNS provider
+# NOTE: You also must pass variables for your DNS provider credentials,
+# such as an API access key and/or secret
+# Run this command for more information about each specific provider:
+#   docker run xenolf/lego:latest dnshelp
 ENV ACME_DNS_AUTHENTICATOR manual
 
 # If this is "staging", use the staging server
@@ -20,25 +24,11 @@ ENV ACME_LETSENCRYPT_SERVER staging
 # For example, if you are using an apache container,
 # this will need to match the UID that runs apache
 # (which may be root)
+# NOTE: We do not use a USER statement or create the user in the Dockerfile,
+# because we accept these variables and create the user at container runtime
+# to ensure correct permissions of certificate files
 ENV ACME_USER_ID 1000
 ENV ACME_GROUP_ID 1000
-
-# You also must pass variables for your DNS provider credentials,
-# such as an API access key and/or secret
-# Run this command for more information about each specific provider:
-#   docker run xenolf/lego:latest dnshelp
-# Note that these variables are not prefixed with "ACME_"
-
-# All subsequent environment variables are intended to enhance readability
-# *Not intended to change at runtime*
-
-# This value cannot change because afaik the VOLUME will not change at runtime
-ENV ACME_DIR /srv/inflatable-wharf
-
-# NOTE: We do not use a USER statement or create the user in the Dockerfile,
-# because we accept the ACME_USER_ID variable
-# and create the user before running lego
-# to ensure correct permissions of certificate files
 
 RUN true \
     && apk update \
@@ -64,7 +54,7 @@ RUN true \
     && true
 
 # REMINDER: Adjust permissions and set volume contents *before* declaring the volume
-VOLUME $ACME_DIR
+VOLUME /srv/inflatable-wharf
 
 COPY ["inflwh.py", "/usr/local/bin/"]
 RUN chmod 755 /usr/local/bin/inflwh.py
