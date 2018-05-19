@@ -59,5 +59,4 @@ VOLUME /srv/inflatable-wharf
 COPY ["inflwh.py", "/usr/local/bin/"]
 RUN chmod 755 /usr/local/bin/inflwh.py
 
-ENTRYPOINT ["/usr/bin/dumb-init", "--"]
-CMD ["/usr/bin/python3", "/usr/local/bin/inflwh.py"]
+ENTRYPOINT ["/usr/bin/dumb-init", "--", "/usr/local/bin/inflwh.py"]
