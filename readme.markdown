@@ -32,7 +32,7 @@ you will see an error like this trying to run it:
 I don't have experience with most of the DNS authenticators supported by lego,
 but I have used both `gandi` and `route53`.
 In my experience, the `gandi` authenticator might take ~30 minutes,
-while the `route53` authenticator was only takeing ~2 minutes.
+while the `route53` authenticator was only taking ~2 minutes.
 
 ### Example: running `inflatable-wharf` on the command line
 
@@ -60,14 +60,14 @@ even though it doesn't begin with `ACME_`.
         --env "ACME_LETSENCRYPT_EMAIL=$letsencrypt_email" \
         --env "ACME_DOMAIN=$domain" \
         --env "ACME_DNS_AUTHENTICATOR=gandi" \
-        --env "ACME_SERVER=staging" \
-        --env "ACME_FREQUENCY=monthly \
+        --env "ACME_LETSENCRYPT_SERVER=staging" \
         --volume "${lego_volume}:/srv/inflatable-wharf" \
         mrled/inflatable-wharf:latest
 
 ### Example: running the `lego` container directly
 
 This command will use the `lego` container to accomplish the same task as we did in `inflatable-wharf` above.
+It will run once and then exit.
 
 When I ran this, it took about 30 minutes.
 
@@ -113,13 +113,13 @@ but instead keep the environment variable in the `lego_acme_env_file` secret.
         - ACME_DNS_AUTHENTICATOR=gandi
         - ACME_SERVER=production
         - ACME_FREQUENCY=monthly
-        - ACME_SECRETS_ENV_FILE=/run/secrets/lego_acme_env_file
       secrets:
         - source: lego_acme_env_file
           target: lego_acme_env_file
           mode: 0444
       volumes:
         - certs:/srv/inflatable-wharf
+      command: --verbose --additional-env-file /run/secrets/lego-acme-secret-env.txt
 
     example-cert-user:
       image: some/image
@@ -138,6 +138,11 @@ but instead keep the environment variable in the `lego_acme_env_file` secret.
       lego_acme_env_file:
         file: ./lego-acme-secret-env.txt
 
+secrets:
+  acme_secrets_env_file:
+    file: "{{ architect_jenkins_swarm_inflwharf_secrets_file }}"
+    name: acme_secrets_env_file_${ACME_SECRETS_ENV_FILE_HASH}
+
 `lego-acme-secret-env.txt`:
 
     GANDI_API_KEY=xxx
@@ -146,10 +151,39 @@ Finally, run this command to deploy the stack:
 
     docker stack deploy --compose-file example.compose.yml ExampleStackName
 
-**Your service may not be available until the certs exist.**
+That works great - but you will find that updating your secrets is impossible,
+because after deployment, your `example-cert-user` image is using the secret.
+One way to do that is to pass the hash as an environment variable.
+This is what I do.
+I have a `secrets` stanza in my Docker compose file like so:
+
+    secrets:
+      acme_secrets_env_file:
+        file: "{{ architect_jenkins_swarm_inflwharf_secrets_file }}"
+        name: acme_secrets_env_file_${ACME_SECRETS_ENV_FILE_HASH}
+
+I then deploy with Ansible,
+and at deployment time I pass the hash as an environment variable called `ACME_SECRETS_ENV_FILE_HASH`.
+My Ansible task to do so looks like this:
+
+    - name: Get MD5 hash for the secrets file
+      stat:
+        path: "{{ secrets_file }}"
+      register: secrets_file_result
+
+    - name: Deploy the Docker stack
+      command: docker stack deploy --compose-file compose.yaml ExampleStackName
+      environment:
+        ACME_SECRETS_ENV_FILE_HASH: "{{ secrets_file_result.stat.md5 }}"
+
+For more information about this solution, see
+[Swarm secrets made easy](https://blog.viktoradam.net/2018/02/28/swarm-secrets-made-easy/)
+
+### Warning: Other swarm services may not be available until the certs exist
 
 `lego` can take 20-30 minutes to validate the DNS challenge
-and receive the signed certificate from Let's Encrypt.
+and receive the signed certificate from Let's Encrypt,
+depending on your DNS authenticator and, like, the phase of the moon or whatever.
 
 For example, if the image using your cert is the official Jenkins image,
 the Swarm will spin that image up,
@@ -175,20 +209,3 @@ And then grabbing the log for the service in question based on that service ID:
 
 (Note that `docker service logs` operates on _service_ IDs you get from `docker stack services`,
 not _container_ IDs that you might get from `docker ps`)
-
-## TO DO
-
-- Do NOT renew cert on startup all the time
-  - This is dangerous - what if the Docker container gets into a restart loop and gets me throttled by Let's Encrypt?
-- Get an initial cert on startup if the existing cert does not exist
-  - happening now
-- Renew cert on startup if the existing cert is expiring before the next run from cron
-  - https://stackoverflow.com/questions/21297853/how-to-determine-ssl-cert-expiration-date-from-a-pem-encoded-certificate#21297927
-  - see end date: `openssl x509 -enddate -noout -in <cert file>`
-  - check whether cert will expire in X seconds: `openssl x509 -checkend <number of seconds> -noout -in <cert file>`
-  - Comparing dates would be much easier in a real language...
-- Renew cert on startup if the cert exists but was issued by a different server (staging/production)
-  - see the cert details including issuer: `openssl x509 -text -noout -in <signed cert>`
-  - check whether cert was signed by a given CA: `openssl verify -verbose -CAFile <ca cert> <signed cer>`
-  - Parsing openssl output would be much easier with Python,
-    and maybe there are Python libraries that won't even require shelling out to openssl...
