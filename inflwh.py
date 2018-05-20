@@ -243,7 +243,8 @@ class LegoBox():
         """
         env = os.environ.copy()
         if self.additional_env_file:
-            env.update(parse_env_file(self.additional_env_file))
+            with open(self.additional_env_file) as ef:
+                env.update(parse_env_file(ef))
         return env
 
     def run(self, whatif=False):
@@ -285,20 +286,21 @@ class LegoBox():
             return True
 
 
-def parse_env_file(path):
+def parse_env_file(fileobj):
     """Parse a shell environment file
 
     A shell environment file is a file containing NAME=VALUE environment variables
     from e.g. the shell's env command.
 
     Note that this is *extremely* basic and does not support comments anywhere or 
+
+    fileobj     An opened file object
     """
     retdict = {}
-    with open(path) as ef:
-        for line in ef.readlines():
-            if len(line) > 0:
-                key, value = line.split('=', 1)
-                retdict[key.strip()] = value.strip()
+    for line in fileobj.readlines():
+        if len(line) > 0:
+            key, value = line.split('=', 1)
+            retdict[key.strip()] = value.strip()
     return retdict
 
 
