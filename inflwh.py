@@ -292,12 +292,15 @@ def parse_env_file(fileobj):
     A shell environment file is a file containing NAME=VALUE environment variables
     from e.g. the shell's env command.
 
-    Note that this is *extremely* basic and does not support comments anywhere or 
+    Note that this is *extremely* basic and does not support:
+    - comments, anywhere
+    - any sort of shell escaping or quoting (escapes/quotes are just copied naively)
 
-    fileobj     An opened file object
+    fileobj     An opened file object from e.g. "open('file.txt')"
     """
     retdict = {}
     for line in fileobj.readlines():
+        line = line.strip()
         if len(line) > 0:
             key, value = line.split('=', 1)
             retdict[key.strip()] = value.strip()
