@@ -109,8 +109,8 @@ def subprocess_run_log(command, env=os.environ.copy()):
     LOGGER.debug("{cmdname} exited with code {rc}\n{out}\n{err}".format(
         cmdname=command[0],
         rc=proc.returncode,
-        out="STDOUT:\n{indent(proc.stdout)}" if proc.stdout else "STDOUT: NONE",
-        err="STDERR:\n{indent(proc.stderr)}" if proc.stderr else "STDERR: NONE"))
+        out=f"STDOUT:\n{indent(proc.stdout)}" if proc.stdout else "STDOUT: NONE",
+        err=f"STDERR:\n{indent(proc.stderr)}" if proc.stderr else "STDERR: NONE"))
     if proc.returncode != 0:
         raise subprocess.CalledProcessError(
             proc.returncode, command, output=proc.stdout, stderr=proc.stderr)
@@ -306,7 +306,11 @@ def parseargs(*args, **kwargs):
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--debug", "-d", action='store_true',
-        help="Include debugging output and start the debugger on unhandled exceptions")
+        help=(
+            "Include debugging output and start the debugger on unhandled exceptions "
+            "(implies --verbose)"))
+    parser.add_argument(
+        "--verbose", "-v", action="store_true", help="Include debugging output")
     parser.add_argument(
         '--logfile', default=None, type=ResolvedPath,
         help="The path to the log file. Defaults to acme.log in the ACME directory")
@@ -365,9 +369,10 @@ def main(*args, **kwargs):
     filehandler.setFormatter(formatter)
     LOGGER.addHandler(filehandler)
 
+    if parsed.verbose or parsed.debug:
+        LOGGER.setLevel(logging.DEBUG)
     if parsed.debug:
         sys.excepthook = idb_excepthook
-        LOGGER.setLevel(logging.DEBUG)
 
     try:
         useradd(parsed.acme_username, parsed.acme_uid, parsed.acme_gid, parsed.acme_dir)
