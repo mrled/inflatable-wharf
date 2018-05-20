@@ -47,5 +47,18 @@ class TestEnvFileParser(unittest.TestCase):
             inflwh.parse_env_file(io.StringIO(teststr)))
 
 
+class TestLegoBox(unittest.TestCase):
+
+    def test_env(self):
+        box = inflwh.LegoBox(
+            '/tmp', 'nobody@example.com', 'test.example.com', 'manual', 'staging',
+            test_env_str="BUTTS=BIG\nWAIST=ITTYBITTY\nTHING=ROUND\n\n\n")
+        import os
+        initenv = os.environ.copy()
+        baselineenv = initenv.copy()
+        baselineenv.update({'BUTTS': 'BIG', 'WAIST': 'ITTYBITTY', 'THING': 'ROUND'})
+        self.assertEqual(box.env, baselineenv)
+
+
 if __name__ == '__main__':
     unittest.main()

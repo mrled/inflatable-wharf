@@ -8,6 +8,7 @@ Sorry
 import argparse
 import datetime
 import enum
+import io
 import json
 import logging
 import os
@@ -187,19 +188,21 @@ class LegoBox():
     dns_authenticator   The DNS hosting provider
     letsencrypt_server  Either "staging" or "production"
     min_cert_validity   If a cert exists but is valid for less than this number of days, renew it
-    docker_secrets      Secrets to look up and pass as environment variables to lego
+    env_file            A file containing NAME=VALUE environment variable assignments
+    test_env_str        Used internally for testing the env_file argument
     """
 
     def __init__(
             self, lego_dir, letsencrypt_email, domain, dns_authenticator, letsencrypt_server,
-            min_cert_validity=25, additional_env_file=None):
+            min_cert_validity=25, env_file=None, test_env_str=None):
         self.lego_dir = lego_dir
         self.letsencrypt_email = letsencrypt_email
         self.domain = domain
         self.dns_authenticator = dns_authenticator
         self.letsencrypt_server = letsencrypt_server
         self.min_cert_validity = min_cert_validity
-        self.additional_env_file = additional_env_file
+        self.env_file = env_file
+        self.test_env_str = test_env_str
 
         self.certificate_path = os.path.join(self.lego_dir, 'certificates', f'{self.domain}.crt')
 
@@ -242,9 +245,15 @@ class LegoBox():
         Include secrets.
         """
         env = os.environ.copy()
-        if self.additional_env_file:
-            with open(self.additional_env_file) as ef:
+        if self.test_env_str is not None:
+            LOGGER.debug("Adding environment variables from test_env_str...")
+            env.update(parse_env_file(io.StringIO(self.test_env_str)))
+        elif self.env_file:
+            LOGGER.debug(f"Adding environment variables from {self.env_file}...")
+            with open(self.env_file) as ef:
                 env.update(parse_env_file(ef))
+        else:
+            LOGGER.debug(f"No additional environment variables to be found")
         return env
 
     def run(self, whatif=False):
