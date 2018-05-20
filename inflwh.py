@@ -187,17 +187,19 @@ class LegoBox():
     dns_authenticator   The DNS hosting provider
     letsencrypt_server  Either "staging" or "production"
     min_cert_validity   If a cert exists but is valid for less than this number of days, renew it
+    docker_secrets      Secrets to look up and pass as environment variables to lego
     """
 
     def __init__(
             self, lego_dir, letsencrypt_email, domain, dns_authenticator, letsencrypt_server,
-            min_cert_validity=25):
+            min_cert_validity=25, docker_secrets=None):
         self.lego_dir = lego_dir
         self.letsencrypt_email = letsencrypt_email
         self.domain = domain
         self.dns_authenticator = dns_authenticator
         self.letsencrypt_server = letsencrypt_server
         self.min_cert_validity = min_cert_validity
+        self.docker_secrets = docker_secrets if docker_secrets else []
 
         self.certificate_path = os.path.join(self.lego_dir, 'certificates', f'{self.domain}.crt')
 
@@ -233,19 +235,30 @@ class LegoBox():
         else:
             return "run"
 
-    def run(self, whatif=False, env=os.environ.copy()):
+    @property
+    def env(self):
+        """The environment to pass to the lego command.
+
+        Include secrets.
+        """
+        env = os.environ.copy()
+        for secret in self.docker_secrets:
+            with open(f"/run/secrets/{secret}") as secf:
+                env[secret] = secf.read()
+        return env
+
+    def run(self, whatif=False):
         """Run the lego command.
 
         whatif      Do not actually run lego, but show what would have run
-        env         A dictionary to pass as the environment; defaults to our env
         """
         LOGGER.info("Running lego in {mode} mode as [{cmd}] with environment\n{env}".format(
             mode="WHATIF" if whatif else "OPERATIONAL",
             cmd=' '.join(self.command),
-            env='\n'.join([f"  {k} = {v}" for k, v in env.items()])))
+            env='\n'.join([f"  {k} = {v}" for k, v in self.env.items()])))
 
         if not whatif:
-            subprocess_run_log(self.command, env=env)
+            subprocess_run_log(self.command, env=self.env)
 
         acme_dir_contents = '\n'.join(abswalk(self.lego_dir))
         LOGGER.info(f"Current contents of {self.lego_dir}:\n{indent(acme_dir_contents)}")
@@ -343,6 +356,13 @@ def parseargs(*args, **kwargs):
         '--only-once', action='store_true',
         help="Run lego once and then exit")
     parser.add_argument(
+        '--docker-secrets', nargs='*',
+        help=(
+            'The names of docker secrets to retrieve. '
+            'Each secret will result in a new environment variable passed to the lego command '
+            'with the secret name as the variable name '
+            'and the secret value as the variable value.'))
+    parser.add_argument(
         '--min-cert-validity', type=int, default=25,
         help="If the certificate exists but expires in less than this number of days, renew")
     parser.add_argument(
@@ -394,7 +414,7 @@ def main(*args, **kwargs):
 
     box = LegoBox(
         parsed.acme_dir, parsed.letsencrypt_email, parsed.domain, parsed.dns_authenticator,
-        parsed.letsencrypt_server)
+        parsed.letsencrypt_server, parsed.docker_secrets)
 
     if parsed.only_once:
         if box.shouldrun():
