@@ -248,7 +248,7 @@ class LegoBox():
         if self.test_env_str is not None:
             LOGGER.debug("Adding environment variables from test_env_str...")
             env.update(parse_env_file(io.StringIO(self.test_env_str)))
-        elif self.env_file:
+        elif self.env_file is not None:
             LOGGER.debug(f"Adding environment variables from {self.env_file}...")
             with open(self.env_file) as ef:
                 env.update(parse_env_file(ef))
@@ -422,6 +422,8 @@ def main(*args, **kwargs):
     if parsed.debug:
         sys.excepthook = idb_excepthook
 
+    LOGGER.debug(f"Started with arguments: {vars(parsed)}")
+
     try:
         useradd(parsed.acme_username, parsed.acme_uid, parsed.acme_gid, parsed.acme_dir)
     except HomeDirectoryStickyBitSet:
@@ -442,7 +444,7 @@ def main(*args, **kwargs):
 
     box = LegoBox(
         parsed.acme_dir, parsed.letsencrypt_email, parsed.domain, parsed.dns_authenticator,
-        parsed.letsencrypt_server, parsed.additional_env_file)
+        parsed.letsencrypt_server, env_file=parsed.additional_env_file)
 
     if parsed.only_once:
         if box.shouldrun():
