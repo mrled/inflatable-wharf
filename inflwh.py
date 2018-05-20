@@ -192,14 +192,14 @@ class LegoBox():
 
     def __init__(
             self, lego_dir, letsencrypt_email, domain, dns_authenticator, letsencrypt_server,
-            min_cert_validity=25, docker_secrets=None):
+            min_cert_validity=25, additional_env_file=None):
         self.lego_dir = lego_dir
         self.letsencrypt_email = letsencrypt_email
         self.domain = domain
         self.dns_authenticator = dns_authenticator
         self.letsencrypt_server = letsencrypt_server
         self.min_cert_validity = min_cert_validity
-        self.docker_secrets = docker_secrets if docker_secrets else []
+        self.additional_env_file = additional_env_file
 
         self.certificate_path = os.path.join(self.lego_dir, 'certificates', f'{self.domain}.crt')
 
@@ -242,9 +242,8 @@ class LegoBox():
         Include secrets.
         """
         env = os.environ.copy()
-        for secret in self.docker_secrets:
-            with open(f"/run/secrets/{secret}") as secf:
-                env[secret] = secf.read()
+        if self.additional_env_file:
+            env.update(parse_env_file(self.additional_env_file))
         return env
 
     def run(self, whatif=False):
@@ -284,6 +283,23 @@ class LegoBox():
         except FileNotFoundError:
             LOGGER.info("Determined lego should be run because the cert does not exist locally")
             return True
+
+
+def parse_env_file(path):
+    """Parse a shell environment file
+
+    A shell environment file is a file containing NAME=VALUE environment variables
+    from e.g. the shell's env command.
+
+    Note that this is *extremely* basic and does not support comments anywhere or 
+    """
+    retdict = {}
+    with open(path) as ef:
+        for line in ef.readlines():
+            if len(line) > 0:
+                key, value = line.split('=', 1)
+                retdict[key.strip()] = value.strip()
+    return retdict
 
 
 def get_cert_expiration(certificate):
@@ -356,12 +372,10 @@ def parseargs(*args, **kwargs):
         '--only-once', action='store_true',
         help="Run lego once and then exit")
     parser.add_argument(
-        '--docker-secrets', nargs='*',
-        help=(
-            'The names of docker secrets to retrieve. '
-            'Each secret will result in a new environment variable passed to the lego command '
-            'with the secret name as the variable name '
-            'and the secret value as the variable value.'))
+        '--additional-env-file', help=(
+            'The path to an additional file containing environment variables. '
+            'The variables should be in KEY=VALUE format.'
+            'Intended for use with Docker secrets in a Docker Swarm.'))
     parser.add_argument(
         '--min-cert-validity', type=int, default=25,
         help="If the certificate exists but expires in less than this number of days, renew")
@@ -414,7 +428,7 @@ def main(*args, **kwargs):
 
     box = LegoBox(
         parsed.acme_dir, parsed.letsencrypt_email, parsed.domain, parsed.dns_authenticator,
-        parsed.letsencrypt_server, parsed.docker_secrets)
+        parsed.letsencrypt_server, parsed.additional_env_file)
 
     if parsed.only_once:
         if box.shouldrun():
